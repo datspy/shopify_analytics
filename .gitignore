@@ -1,0 +1,11 @@
+### Credentials
+.env
+credentials.json
+/credentials
+
+### LogFiles
+/logs/*.log
+
+### Test Files
+test.py
+/test*
