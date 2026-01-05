@@ -4,12 +4,14 @@ import functools
 from access_functions import write_dataframe_to_bigquery
 import os
 from dotenv import load_dotenv
+import logging
+
 
 load_dotenv()
 
 p_id = os.getenv("project_id")
 d_id = os.getenv("dataset_id")
-credentials = 'upwork-478017-8be10990e83c.json'
+logger = logging.getLogger(__name__)
 
 
 def get_sales_df(table_data):
@@ -78,7 +80,8 @@ def get_inventory_weekly_df(table_data):
         inventory_weekly_df['OutOfStock_Weeks'] = inventory_weekly_df.apply(lambda x : 1 if (x['Ending Units']==0) else 0, axis=1)
 
         inventory_agg = inventory_weekly_df.groupby(['SKU'], as_index=False).agg({'Week':'count', 'Inventory Sold': sum, 'Active_Weeks': sum, 'Inactive_Weeks': sum, 'OutOfStock_Weeks': sum })
-        inventory_agg['avg_weekly_sales'] = inventory_agg['Inventory Sold']//inventory_agg['Active_Weeks']
+        active_weeks = inventory_agg['Active_Weeks'].replace(0, pd.NA)
+        inventory_agg['avg_weekly_sales'] = (inventory_agg['Inventory Sold'] / active_weeks).fillna(0)
 
 
         inventory_agg_data = inventory_agg[['SKU', 'Inventory Sold', 'OutOfStock_Weeks', 'avg_weekly_sales']].rename(columns={'Inventory Sold':'inventory_sold_last_6months', 
@@ -154,13 +157,11 @@ def get_consolidated_df(sales_df, inventory_df, inventory_weekly_df):
 
 
 def load_bigquery_table(final_df, table_name):
-        
-           
+        logger.info("Loading table %s to BigQuery", table_name)
         write_dataframe_to_bigquery(               
                df=final_df,
                project_id=p_id,
                dataset_id=d_id,
                table_id=table_name,
-               if_exists='replace',  # Options: 'fail', 'replace', 'append'
-               credentials_path=credentials
+               if_exists='replace'
                )

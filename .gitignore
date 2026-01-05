@@ -4,7 +4,12 @@ credentials.json
 /credentials
 
 ### LogFiles
-/logs/*.log
+/logs/*
+!/logs/.gitkeep
+
+### Output Files
+/output/*
+!/output/.gitkeep
 
 ### Test Files
 test.py

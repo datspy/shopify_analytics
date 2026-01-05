@@ -6,6 +6,7 @@ from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
 import pandas as pd
 from typing import Optional
+import logging
 
 load_dotenv()
 
@@ -13,16 +14,16 @@ SHOP_URL = os.getenv("SHOP_URL")
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 API_VERSION = os.getenv("API_VERSION")
-credentials_path = 'upwork-478017-8be10990e83c.json'
+credentials_path = os.path.join("credentials", "credentials.json")
+logger = logging.getLogger(__name__)
 
 def get_access_token_oauth(shop_url):
     """
-    Exchange authorization code for access token (OAuth flow)
-    
+    Exchange credentials for an access token (client credentials flow).
+
     Args:
         shop_url: the shop URL (e.g., 'yourstore.myshopify.com')
-        authorization_code: Code received from authorization callback
-    
+
     Returns:
         access_token: The access token to use for API calls
     """
@@ -39,7 +40,7 @@ def get_access_token_oauth(shop_url):
     if response.status_code == 200:
         data = response.json()
         access_token = data['access_token']
-        print(f"Access token obtained successfully!")
+        logger.info("Access token obtained successfully.")
         return data, access_token
     else:
         raise Exception(f"Failed to get access token: {response.text}")
@@ -56,7 +57,7 @@ def connect_to_shopify(access_token=None):
     session = shopify.Session(SHOP_URL, API_VERSION, token)
     shopify.ShopifyResource.activate_session(session)    
     
-    print(f"Connected to {SHOP_URL}")
+    logger.info("Connected to %s", SHOP_URL)
 
 
 def run_shopifyQL_query(query, access_token=None):
@@ -101,10 +102,10 @@ def run_shopifyQL_query(query, access_token=None):
         # parseErrors is now likely a list of strings or a single string
         errors = result.get("parseErrors")
         if errors:
-            print("ShopifyQL Errors found:")
-            print(errors) 
+            logger.error("ShopifyQL errors found: %s", errors)
+            raise ValueError(f"ShopifyQL query parse errors: {errors}")
         else:
-            table_data = result.get("tableData", {})        
+            table_data = result.get("tableData", {})
     else:
         raise Exception(f"GraphQL query failed: {response.text}")
 
@@ -160,28 +161,28 @@ def write_dataframe_to_bigquery(
         dataset_ref = client.dataset(dataset_id)
         try:
             client.get_dataset(dataset_ref)
-            print(f"Dataset {dataset_id} exists")
+            logger.info("Dataset %s exists", dataset_id)
         except NotFound:
             dataset = bigquery.Dataset(dataset_ref)
             dataset.location = "US"  # Change as needed
             client.create_dataset(dataset)
-            print(f"Created dataset {dataset_id}")
+            logger.info("Created dataset %s", dataset_id)
         
         # Check if table exists
         try:
             table = client.get_table(table_ref)
             table_exists = True
-            print(f"Table {table_id} exists")
+            logger.info("Table %s exists", table_id)
             
             if if_exists == 'fail':
                 raise ValueError(f"Table {table_ref} already exists and if_exists='fail'")
             elif if_exists == 'replace':
                 client.delete_table(table_ref)
-                print(f"Deleted existing table {table_id}")
+                logger.info("Deleted existing table %s", table_id)
                 table_exists = False
         except NotFound:
             table_exists = False
-            print(f"Table {table_id} does not exist, will create")
+            logger.info("Table %s does not exist, will create", table_id)
         
         # Configure job settings
         job_config = bigquery.LoadJobConfig()
@@ -205,8 +206,8 @@ def write_dataframe_to_bigquery(
         
         # Get updated table info
         table = client.get_table(table_ref)
-        print(f"Successfully loaded {table.num_rows} rows to {table_ref}")
+        logger.info("Successfully loaded %s rows to %s", table.num_rows, table_ref)
         
     except Exception as e:
-        print(f"Error writing to BigQuery: {str(e)}")
+        logger.exception("Error writing to BigQuery: %s", str(e))
         raise
