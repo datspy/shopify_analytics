@@ -5,7 +5,6 @@ import shopify
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
 import pandas as pd
-from typing import Optional
 import logging
 
 load_dotenv()
@@ -14,6 +13,8 @@ SHOP_URL = os.getenv("SHOP_URL")
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 API_VERSION = os.getenv("API_VERSION")
+project_id=os.getenv("GCP_PROJECT_ID")
+dataset_id=os.getenv("BIGQUERY_DATASET_ID")
 credentials_path = os.path.join("credentials", "credentials.json")
 logger = logging.getLogger(__name__)
 
@@ -117,8 +118,7 @@ def write_dataframe_to_bigquery(
     project_id: str,
     dataset_id: str,
     table_id: str,
-    if_exists: str = 'append',
-    credentials_path: Optional[str] = None
+    if_exists: str = 'append'
 ) -> None:
     """
     Write a pandas DataFrame to a Google BigQuery table.
@@ -129,7 +129,6 @@ def write_dataframe_to_bigquery(
         dataset_id: BigQuery dataset ID
         table_id: BigQuery table ID
         if_exists: What to do if table exists ('fail', 'replace', 'append')
-        credentials_path: Optional path to service account JSON key file
     
     Returns:
         None
@@ -137,6 +136,8 @@ def write_dataframe_to_bigquery(
     Raises:
         ValueError: If if_exists parameter is invalid
         Exception: If write operation fails
+    Note:
+        Uses the module-level `credentials_path` for service account auth.
     """
     
     # Validate if_exists parameter

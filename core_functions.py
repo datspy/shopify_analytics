@@ -9,8 +9,8 @@ import logging
 
 load_dotenv()
 
-p_id = os.getenv("project_id")
-d_id = os.getenv("dataset_id")
+p_id = os.getenv("GCP_PROJECT_ID")
+d_id = os.getenv("BIGQUERY_DATASET_ID")
 logger = logging.getLogger(__name__)
 
 

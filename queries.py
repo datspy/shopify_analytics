@@ -20,7 +20,7 @@ def get_sales_query():
         SHOW orders, net_sales, average_order_value
         WHERE cost_is_recorded = true
         GROUP BY product_title, product_variant_title, product_variant_sku
-        SINCE startOfDay(-15d) UNTIL yesterday
+        SINCE startOfDay(-14d) UNTIL yesterday
         ORDER BY net_sales DESC
         LIMIT 10
         """
