@@ -42,7 +42,7 @@ def get_access_token_oauth(shop_url):
         data = response.json()
         access_token = data['access_token']
         logger.info("Access token obtained successfully.")
-        return data, access_token
+        return access_token
     else:
         raise Exception(f"Failed to get access token: {response.text}")
 

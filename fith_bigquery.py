@@ -42,7 +42,7 @@ def main(access_token=None):
         sales_query = get_sales_query()
         sales_data = run_shopifyQL_query(sales_query, access_token)
         sales_df = core.get_sales_df(sales_data)
-        skus = tuple(sales_df['SKU'].unique())
+        skus = tuple(sales_df['product_variant_sku'].unique())
         logger.info("Sales rows: %s", sales_df.shape)
 
         logger.info("Running inventory query")
@@ -62,17 +62,23 @@ def main(access_token=None):
         sales_by_channel_query = get_channel_sales_query()
         sales_by_channel_data = run_shopifyQL_query(sales_by_channel_query, access_token)
         channel_sales_df = core.get_sales_by_channel_df(sales_by_channel_data)
-        products= tuple(channel_sales_df['Product_Title'].unique())
+        products= tuple(channel_sales_df['product_title'].unique())
 
-        channel_inventory_df = get_channel_inventory_query(products)
-        inventory_by_channel_data = run_shopifyQL_query(channel_inventory_df, access_token)
+        channel_inventory_query = get_channel_inventory_query(products)
+        inventory_by_channel_data = run_shopifyQL_query(channel_inventory_query, access_token)
         channel_inventory_df = core.get_inventory_for_channel_products_df(inventory_by_channel_data)
         
-        out_of_stock_df = channel_inventory_df[channel_inventory_df['OutOfStock_SKU']==1].reset_index(drop=True)
+        out_of_stock_df = channel_inventory_df[channel_inventory_df['out_of_stock_sku']==1].reset_index(drop=True)
         out_of_stock_df = out_of_stock_df.fillna(0)
         
-        channel_inventory_agg = channel_inventory_df.groupby(['Product_Title']).agg({'SKU':'count', 'OutOfStock_SKU': sum, 'inventory_units_sold': 'sum'})
-        channel_consolidated_df = channel_sales_df.merge(channel_inventory_agg, how='left', on='Product_Title')
+        channel_inventory_agg = channel_inventory_df.groupby(['product_title'], as_index=False).agg({'product_variant_sku':'count',
+                                                                                     'out_of_stock_sku': sum,
+                                                                                     'inventory_units_sold': sum}).rename(columns={'product_variant_sku':'active_sku_count'}).reset_index(drop=True)
+        
+        channel_consolidated_df = channel_sales_df.merge(channel_inventory_agg, how='left', on='product_title')
+        channel_consolidated_df = channel_consolidated_df[['product_title', 'sales_channel', 'inventory_units_sold', 
+                                                       'orders', 'quantity_returned', 'net_sales', 'average_order_value', 
+                                                       'active_sku_count', 'out_of_stock_sku']]
 
         # Merge DataFrames
         final_df = core.get_consolidated_df(sales_df, inventory_df, inventory_weekly_df)
@@ -90,7 +96,7 @@ if __name__ == "__main__":
     setup_logging()
     args = parse_args()
     # Step 1: Get Access Token
-    data, access_token = get_access_token_oauth(SHOP_URL)
+    access_token = get_access_token_oauth(SHOP_URL)
     
     # Step 2: Call Main Function
     df, channel_df, out_of_stock_df = main(access_token)

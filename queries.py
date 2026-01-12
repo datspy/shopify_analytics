@@ -111,6 +111,7 @@ def get_channel_inventory_query(product_list):
         WHERE inventory_is_tracked = true
         AND product_title IN {product_list}
         GROUP BY product_title, product_variant_title, product_variant_sku
+        HAVING inventory_units_sold > 0
         SINCE {start_date} UNTIL {end_date}
         """
     
