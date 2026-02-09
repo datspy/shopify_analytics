@@ -4,9 +4,10 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 import shopify
-from access_functions import get_access_token_oauth, connect_to_shopify, run_shopifyQL_query
+from access_functions import get_access_token_oauth, connect_to_shopify, run_shopifyQL_query, read_dataframe_from_bigquery
 import core_functions as core
-from queries import get_sales_query, get_inventory_query, get_inventory_weekly_query, get_channel_sales_query, get_channel_inventory_query
+import queries as qry
+import time
 
 load_dotenv()
 
@@ -39,32 +40,50 @@ def main(access_token=None):
         # Connect to Shopify
         connect_to_shopify(access_token)
         logger.info("Running sales query")
-        sales_query = get_sales_query()
+        sales_query = qry.get_all_sku_sales_query()
         sales_data = run_shopifyQL_query(sales_query, access_token)
         sales_df = core.get_sales_df(sales_data)
-        skus = tuple(sales_df['product_variant_sku'].unique())
+        skus = sales_df['product_variant_sku'].unique()
+        skus.sort()
+        skus_sorted = tuple(skus)
         logger.info("Sales rows: %s", sales_df.shape)
 
+
+        logger.info("Running top-selling query")
+        top_seller_query = qry.get_top_selling_query()
+        top_seller_data = run_shopifyQL_query(top_seller_query, access_token)
+        top_seller_df = core.get_sales_df(top_seller_data)
+        top_seller_df = top_seller_df[['product_variant_sku', 'net_sales']].rename(columns={'net_sales': 'net_sales_14days'}).reset_index(drop=True)
+
         logger.info("Running inventory query")
-        inventory_query = get_inventory_query(skus)
+        inventory_query = qry.get_inventory_query(skus_sorted)
         inventory_data = run_shopifyQL_query(inventory_query, access_token)
         inventory_df = core.get_inventory_df(inventory_data)
         logger.info("Inventory rows: %s", inventory_df.shape)
 
         logger.info("Running inventory weekly query")
-        inventory_weekly_query = get_inventory_weekly_query(skus)
-        inventory_weekly_data = run_shopifyQL_query(inventory_weekly_query, access_token)
-        inventory_weekly_df = core.get_inventory_weekly_df(inventory_weekly_data)
-        logger.info("Inventory weekly rows: %s", inventory_weekly_df.shape)
+        inventory_weekly_agg_query = qry.get_inventory_agg_query()
+        inventory_weekly_agg_data = read_dataframe_from_bigquery(inventory_weekly_agg_query)
+        inventory_weekly_agg_df = inventory_weekly_agg_data[['product_variant_sku','active_weeks', 'out_of_stock_weeks', 'avg_weekly_sales']].reset_index(drop=True)        
+        logger.info("Inventory weekly rows: %s", inventory_weekly_agg_df.shape)
 
+        logger.info("Running all-sku channel sales query")
+        all_sku_channel_sales_query = qry.get_all_sku_channel_sales_query()
+        all_sku_channel_sales_data = run_shopifyQL_query(all_sku_channel_sales_query, access_token)
+        all_sku_channel_sales_df = core.get_sku_channel_sales_df(all_sku_channel_sales_data)
+        logger.info("All SKU channel sales rows: %s", all_sku_channel_sales_df.shape)
 
         logger.info("Running channel sales query")
-        sales_by_channel_query = get_channel_sales_query()
+        sales_by_channel_query = qry.get_channel_sales_query()
         sales_by_channel_data = run_shopifyQL_query(sales_by_channel_query, access_token)
         channel_sales_df = core.get_sales_by_channel_df(sales_by_channel_data)
         products= tuple(channel_sales_df['product_title'].unique())
 
-        channel_inventory_query = get_channel_inventory_query(products)
+        logger.info("Sleeping for 10 seconds to avoid rate limits...")
+        time.sleep(600)  # Sleep to avoid hitting rate limits
+
+        logger.info("Running channel inventory query")
+        channel_inventory_query = qry.get_channel_inventory_query(products)
         inventory_by_channel_data = run_shopifyQL_query(channel_inventory_query, access_token)
         channel_inventory_df = core.get_inventory_for_channel_products_df(inventory_by_channel_data)
         
@@ -81,7 +100,8 @@ def main(access_token=None):
                                                        'active_sku_count', 'out_of_stock_sku']]
 
         # Merge DataFrames
-        final_df = core.get_consolidated_df(sales_df, inventory_df, inventory_weekly_df)
+        df_list = [sales_df, top_seller_df, inventory_df, inventory_weekly_agg_df, all_sku_channel_sales_df]
+        final_df = core.get_consolidated_df(df_list)
         
         return final_df, channel_consolidated_df, out_of_stock_df 
 
@@ -99,7 +119,7 @@ if __name__ == "__main__":
     access_token = get_access_token_oauth(SHOP_URL)
     
     # Step 2: Call Main Function
-    df, channel_df, out_of_stock_df = main(access_token)
+    df, channel_df, out_of_stock_df = main(access_token)    
 
     # Step 3: Load Data to BigQuery
     if args.output == "bigquery":

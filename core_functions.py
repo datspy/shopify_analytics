@@ -33,9 +33,7 @@ def create_date_table(year):
     date_table = pd.DataFrame({
         'date': date_range,
         'year_month': date_range.to_period('M'),
-        'quarter': date_range.to_series().apply(
-            lambda x: f"Q{(x.month - 1) // 3 + 1}_{x.year}"
-        ).values,        
+        'quarter': date_range.to_series().apply(lambda x: f"Q{(x.month - 1) // 3 + 1}_{x.year}").values,        
         'week_number': date_range.isocalendar().week
     })
     
@@ -77,47 +75,88 @@ def get_inventory_df(table_data):
         ending_inventory_units = list(map(itemgetter('ending_inventory_units'), table_data['rows']))
 
         inventory_dict = {'product_variant_sku': product_variant_sku,
-                        'inventory_sold_last_14days': inventory_units_sold,
+                        'inventory_sold_last_60days': inventory_units_sold,
                         'current_available_inventory_units': ending_inventory_units}
         inventory_df = pd.DataFrame(inventory_dict)
 
-        inventory_df['inventory_sold_last_14days']=inventory_df['inventory_sold_last_14days'].astype(int)
+        inventory_df['inventory_sold_last_60days']=inventory_df['inventory_sold_last_60days'].astype(int)
         inventory_df['current_available_inventory_units']=inventory_df['current_available_inventory_units'].astype(int)
         inventory_df = inventory_df.reset_index(drop=True)
 
         return inventory_df
 
 
-def get_inventory_weekly_df(table_data):
 
-        product_variant_sku = list(map(itemgetter('product_variant_sku'), table_data['rows']))
-        week = list(map(itemgetter('week'), table_data['rows']))
-        inventory_units_sold = list(map(itemgetter('inventory_units_sold'), table_data['rows']))
-        ending_inventory_units = list(map(itemgetter('ending_inventory_units'), table_data['rows']))
+def get_inventory_weekly_agg_df(table_data):
 
-        inventory_weekly_dict = {'product_variant_sku': product_variant_sku,
-                        'week': week,
+        product_variant_sku = list(map(itemgetter('product_variant_sku'), table_data['rows']))        
+        inventory_units_sold = list(map(itemgetter('total_inventory_sold'), table_data['rows']))
+        total_active_weeks = list(map(itemgetter('total_active_weeks'), table_data['rows']))
+        total_out_of_stock_weeks = list(map(itemgetter('total_out_of_stock_weeks'), table_data['rows']))
+        avg_weekly_sales = list(map(itemgetter('avg_weekly_sales'), table_data['rows']))
+
+
+
+        inventory_weekly_agg_dict = {'product_variant_sku': product_variant_sku,                        
                         'inventory_units_sold': inventory_units_sold,
-                        'ending_inventory_units': ending_inventory_units}
-        inventory_weekly_df = pd.DataFrame(inventory_weekly_dict)
-
-        inventory_weekly_df['week']=pd.to_datetime(inventory_weekly_df['week']).dt.date
-        inventory_weekly_df['inventory_units_sold']=inventory_weekly_df['inventory_units_sold'].astype(int)
-        inventory_weekly_df['ending_inventory_units']=inventory_weekly_df['ending_inventory_units'].astype(int)        
-        inventory_weekly_df['Active_Weeks'] = inventory_weekly_df.apply(lambda x : 1 if x['inventory_units_sold']>0 else 0, axis=1)
-        inventory_weekly_df['Inactive_Weeks'] = inventory_weekly_df.apply(lambda x : 1 if ((x['ending_inventory_units']>0) & (x['inventory_units_sold']==0)) else 0, axis=1)
-        inventory_weekly_df['OutOfStock_Weeks'] = inventory_weekly_df.apply(lambda x : 1 if (x['ending_inventory_units']==0) else 0, axis=1)
-
-        inventory_agg = inventory_weekly_df.groupby(['product_variant_sku'], as_index=False).agg({'week':'count', 'inventory_units_sold': sum, 'Active_Weeks': sum, 'Inactive_Weeks': sum, 'OutOfStock_Weeks': sum })
-        active_weeks = inventory_agg['Active_Weeks'].replace(0, pd.NA)
-        inventory_agg['avg_weekly_sales'] = (inventory_agg['inventory_units_sold'] / active_weeks).fillna(0)
-
-
-        inventory_agg_data = inventory_agg[['product_variant_sku', 'inventory_units_sold', 'OutOfStock_Weeks', 'avg_weekly_sales']].rename(columns={'inventory_units_sold':'inventory_sold_last_6months',
-                                                                                                                                'OutOfStock_Weeks': 'out_of_stock_weeks_last_6months'
-                                                                                                                                }).reset_index(drop=True)
+                        'active_weeks': total_active_weeks,
+                        'out_of_stock_weeks': total_out_of_stock_weeks,
+                        'avg_weekly_sales': avg_weekly_sales}
+        
+        inventory_weekly_agg_df = pd.DataFrame(inventory_weekly_agg_dict)
+        inventory_agg_data = inventory_weekly_agg_df[['product_variant_sku','active_weeks', 'out_of_stock_weeks', 'avg_weekly_sales']].reset_index(drop=True)
 
         return inventory_agg_data
+
+
+def get_sku_channel_sales_df(table_data):        
+       
+        product_variant_sku = list(map(itemgetter('product_variant_sku'), table_data['rows']))        
+        orders = list(map(itemgetter('orders'), table_data['rows']))
+        net_sales = list(map(itemgetter('net_sales'), table_data['rows']))
+
+        sku_channel_sales_dict = {'product_variant_sku': product_variant_sku,                
+                'tiktok_meta_orders': orders,               
+                'tiktok_meta_net_sales': net_sales}
+        sku_channel_sales_df = pd.DataFrame(sku_channel_sales_dict)
+
+        sku_channel_sales_df['tiktok_meta_orders']=sku_channel_sales_df['tiktok_meta_orders'].astype(int)        
+        sku_channel_sales_df['tiktok_meta_net_sales']=sku_channel_sales_df['tiktok_meta_net_sales'].astype(float)        
+        sku_channel_sales_df = sku_channel_sales_df.reset_index(drop=True)
+
+        return sku_channel_sales_df
+
+# def get_inventory_weekly_df(table_data):
+
+#         product_variant_sku = list(map(itemgetter('product_variant_sku'), table_data['rows']))
+#         week = list(map(itemgetter('week'), table_data['rows']))
+#         inventory_units_sold = list(map(itemgetter('inventory_units_sold'), table_data['rows']))
+#         ending_inventory_units = list(map(itemgetter('ending_inventory_units'), table_data['rows']))
+
+#         inventory_weekly_dict = {'product_variant_sku': product_variant_sku,
+#                         'week': week,
+#                         'inventory_units_sold': inventory_units_sold,
+#                         'ending_inventory_units': ending_inventory_units}
+#         inventory_weekly_df = pd.DataFrame(inventory_weekly_dict)
+
+#         inventory_weekly_df['week']=pd.to_datetime(inventory_weekly_df['week']).dt.date
+#         inventory_weekly_df['inventory_units_sold']=inventory_weekly_df['inventory_units_sold'].astype(int)
+#         inventory_weekly_df['ending_inventory_units']=inventory_weekly_df['ending_inventory_units'].astype(int)        
+#         inventory_weekly_df['Active_Weeks'] = inventory_weekly_df.apply(lambda x : 1 if x['inventory_units_sold']>0 else 0, axis=1)
+#         inventory_weekly_df['Inactive_Weeks'] = inventory_weekly_df.apply(lambda x : 1 if ((x['ending_inventory_units']>0) & (x['inventory_units_sold']==0)) else 0, axis=1)
+#         inventory_weekly_df['out_of_stock_weeks'] = inventory_weekly_df.apply(lambda x : 1 if (x['ending_inventory_units']==0) else 0, axis=1)
+
+#         inventory_agg = inventory_weekly_df.groupby(['product_variant_sku'], as_index=False).agg({'week':'count', 
+#                                                                                                   'inventory_units_sold': sum,
+#                                                                                                   'Active_Weeks': sum,
+#                                                                                                   'Inactive_Weeks': sum,
+#                                                                                                   'out_of_stock_weeks': sum })
+#         active_weeks = inventory_agg['Active_Weeks'].replace(0, pd.NA)
+#         inventory_agg['avg_weekly_sales'] = (inventory_agg['inventory_units_sold'] / active_weeks).fillna(0)
+
+#         inventory_agg_data = inventory_agg[['product_variant_sku', 'out_of_stock_weeks', 'avg_weekly_sales']].reset_index(drop=True)
+
+#         return inventory_agg_data
 
 
 def get_sales_by_channel_df(table_data):        
@@ -177,9 +216,9 @@ def get_inventory_for_channel_products_df(table_data):
         return inventory_channel_df
 
 
-def get_consolidated_df(sales_df, inventory_df, inventory_weekly_df):
+def get_consolidated_df(df_list):
 
-    consolidated_df = functools.reduce(lambda left, right: pd.merge(left, right, on='product_variant_sku'), [sales_df, inventory_df, inventory_weekly_df])
+    consolidated_df = functools.reduce(lambda left, right: pd.merge(left, right, on='product_variant_sku', how='left'), df_list)
     consolidated_df = consolidated_df.fillna(0)
 
     return consolidated_df

@@ -98,19 +98,63 @@ def run_shopifyQL_query(query, access_token=None):
     
     if response.status_code == 200:
         data = response.json()
+
+        rate_limit_errors = data.get("errors")
         result = data.get("data", {}).get("shopifyqlQuery", {})
-    
-        # parseErrors is now likely a list of strings or a single string
-        errors = result.get("parseErrors")
+        
+        if rate_limit_errors:
+            errors = data.get("errors")[0].get("message")
+            logger.error("Rate-Limit Error: %s", data)                        
+        else:
+            errors = result.get("parseErrors")                       
+
         if errors:
-            logger.error("ShopifyQL errors found: %s", errors)
-            raise ValueError(f"ShopifyQL query parse errors: {errors}")
+            logger.info("Shopify Query: %s", query)            
+            raise ValueError(f"ShopifyQL query errors: {errors}")
         else:
             table_data = result.get("tableData", {})
     else:
         raise Exception(f"GraphQL query failed: {response.text}")
 
     return table_data
+
+
+
+def read_dataframe_from_bigquery(sql_query):
+
+    """
+    Read a Google BigQuery table into a pandas DataFrame.
+    
+    Args:
+        bigquery: Full table reference in the format 'project.dataset.table'
+    
+    Returns:
+        pandas DataFrame containing the table data
+    
+    Raises:
+        Exception: If read operation fails
+    Note:
+        Uses the module-level `credentials_path` for service account auth.
+    """
+    
+    try:
+        # Initialize BigQuery client
+        if credentials_path:
+            client = bigquery.Client.from_service_account_json(
+                credentials_path
+            )
+        else:
+            client = bigquery.Client()
+        
+        # Read table into DataFrame
+        df = client.query(sql_query).to_dataframe()
+        logger.info("Successfully read rows from BigQuery")
+        return df
+    
+    except Exception as e:
+        logger.exception("Error reading from BigQuery: %s", str(e))
+        raise
+
 
 
 def write_dataframe_to_bigquery(
